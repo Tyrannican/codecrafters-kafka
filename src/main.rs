@@ -1,4 +1,10 @@
-use tokio::{io::AsyncWriteExt, net::TcpListener};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+};
+
+mod message;
+use message::{Request, Response};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -7,12 +13,14 @@ async fn main() -> anyhow::Result<()> {
     loop {
         match listener.accept().await {
             Ok((mut client, _)) => {
-                let message_size: i32 = 12;
-                let correlation_id: i32 = 7;
-                let mut response = vec![];
-                response.extend(message_size.to_be_bytes());
-                response.extend(correlation_id.to_be_bytes());
-                client.write(&response).await?;
+                let mut buf = [0; 1024];
+                client.read(&mut buf).await?;
+                let req = Request::from_bytes(&buf).await?;
+                let resp = Response {
+                    message_size: 35,
+                    correlation_id: req.header.correlation_id,
+                };
+                client.write(&resp.to_bytes()).await?;
             }
             Err(e) => anyhow::bail!(e),
         }
