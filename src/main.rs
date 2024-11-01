@@ -4,7 +4,7 @@ use tokio::{
 };
 
 mod message;
-use message::{Request, Response};
+use message::{error::KafkaError, Request, Response};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -16,10 +16,21 @@ async fn main() -> anyhow::Result<()> {
                 let mut buf = [0; 1024];
                 client.read(&mut buf).await?;
                 let req = Request::from_bytes(&buf).await?;
-                let resp = Response {
-                    message_size: 35,
-                    correlation_id: req.header.correlation_id,
+
+                let resp = if req.header.api_version < 0 || req.header.api_version > 4 {
+                    Response {
+                        message_size: 35,
+                        header: req.header.clone(),
+                        error: KafkaError::UNSUPPORTED_VERSION,
+                    }
+                } else {
+                    Response {
+                        message_size: 35,
+                        header: req.header.clone(),
+                        error: KafkaError::UNSUPPORTED_VERSION,
+                    }
                 };
+
                 client.write(&resp.to_bytes()).await?;
             }
             Err(e) => anyhow::bail!(e),
