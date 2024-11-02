@@ -1,6 +1,6 @@
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
 };
 
 mod message;
@@ -15,15 +15,13 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         match listener.accept().await {
-            Ok((mut client, _)) => {
+            Ok((mut client, _)) => loop {
                 let mut buf = [0; 1024];
                 client.read(&mut buf).await?;
                 let req = Request::from_bytes(&buf).await?;
                 let resp = RequestParser::new(req).parse();
-
-                let resp_bytes = resp.to_bytes();
-                client.write(&resp_bytes).await?;
-            }
+                client.write(&resp.to_bytes()).await?;
+            },
             Err(e) => anyhow::bail!(e),
         }
     }
