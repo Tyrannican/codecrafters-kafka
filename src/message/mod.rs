@@ -11,6 +11,7 @@ pub trait KafkaMessage {
     fn to_bytes(&self) -> Vec<u8>;
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Request {
     pub message_size: i32,

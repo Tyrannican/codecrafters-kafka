@@ -6,7 +6,7 @@ use crate::{
 };
 
 fn supported_apis() -> Vec<ApiKey> {
-    vec![ApiKey::ApiVersions]
+    vec![ApiKey::ApiVersions, ApiKey::DescribeTopicPartitions]
 }
 
 #[derive(Debug)]
