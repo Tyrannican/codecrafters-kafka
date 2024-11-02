@@ -13,7 +13,7 @@ impl RequestParser {
         Self { req }
     }
 
-    pub fn parse(&self) -> Box<dyn KafkaMessage> {
+    pub fn parse(&self) -> Box<dyn KafkaMessage + Send> {
         let header = &self.req.header;
         let api_key = ApiKey::from(header.api_key);
 
