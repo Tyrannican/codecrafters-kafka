@@ -1,13 +1,43 @@
 use anyhow::Result;
-use error::KafkaError;
-use tokio::io::{AsyncReadExt, BufReader};
+use bytes::{Buf, BufMut};
 
-pub mod error;
+use crate::protocol::error::KafkaError;
+use std::io::Read;
+
+pub mod api_versions;
+pub use api_versions::ApiVersionResponse;
+
+pub trait KafkaMessage {
+    fn to_bytes(&self) -> Vec<u8>;
+}
 
 #[derive(Debug)]
 pub struct Request {
     pub message_size: i32,
     pub header: MessageHeader,
+    pub content: Vec<u8>,
+}
+
+impl Request {
+    pub async fn from_bytes(mut input: &[u8]) -> Result<Self> {
+        let message_size = input.get_i32();
+        let api_key = input.get_i16();
+        let api_version = input.get_i16();
+        let correlation_id = input.get_i32();
+        let mut content = vec![];
+        let mut reader = input.reader();
+        reader.read_to_end(&mut content)?;
+
+        Ok(Self {
+            message_size,
+            header: MessageHeader {
+                api_key,
+                api_version,
+                correlation_id,
+            },
+            content,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -18,37 +48,29 @@ pub struct MessageHeader {
 }
 
 #[derive(Debug)]
-pub struct Response {
+pub struct GeneralResponse {
     pub message_size: i32,
-    pub header: MessageHeader,
     pub error: KafkaError,
+    pub correlation_id: i32,
 }
 
-impl Request {
-    pub async fn from_bytes(input: &[u8]) -> Result<Self> {
-        let mut input = BufReader::new(input);
-        let message_size = input.read_i32().await?;
-        let api_key = input.read_i16().await?;
-        let api_version = input.read_i16().await?;
-        let correlation_id = input.read_i32().await?;
-
-        Ok(Self {
-            message_size,
-            header: MessageHeader {
-                api_key,
-                api_version,
-                correlation_id,
-            },
-        })
+impl GeneralResponse {
+    pub fn new(c_id: i32, error: KafkaError) -> Self {
+        Self {
+            message_size: 6,
+            error,
+            correlation_id: c_id,
+        }
     }
 }
 
-impl Response {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-        bytes.extend(self.message_size.to_be_bytes());
-        bytes.extend(self.header.correlation_id.to_be_bytes());
-        bytes.extend(self.error.to_bytes());
-        bytes
+impl KafkaMessage for GeneralResponse {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut resp = Vec::new();
+        resp.put_i32(self.message_size);
+        resp.put_i32(self.correlation_id);
+        resp.put_i16(self.error.into());
+
+        resp
     }
 }
