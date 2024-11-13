@@ -1,4 +1,7 @@
-use crate::message::{ApiVersionResponse, GeneralResponse, KafkaMessage, Request};
+use crate::message::{
+    describe_topic_partitions::DescribeTopicPartitionsResponse, ApiVersionResponse,
+    GeneralResponse, KafkaMessage, Request,
+};
 
 pub mod api;
 pub use api::ApiKey;
@@ -28,6 +31,9 @@ impl RequestParser {
 
         match api_key {
             ApiKey::ApiVersions => Box::new(ApiVersionResponse::new(header)),
+            ApiKey::DescribeTopicPartitions => {
+                Box::new(DescribeTopicPartitionsResponse::new(&self.req))
+            }
             _ => unreachable!("should not be possible"),
         }
     }

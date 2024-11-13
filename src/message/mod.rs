@@ -6,6 +6,7 @@ use std::io::Read;
 
 pub mod api_versions;
 pub use api_versions::ApiVersionResponse;
+pub mod describe_topic_partitions;
 
 pub trait KafkaMessage {
     fn to_bytes(&self) -> Vec<u8>;
