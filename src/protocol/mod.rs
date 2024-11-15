@@ -7,6 +7,11 @@ pub mod api;
 pub use api::ApiKey;
 pub mod error;
 pub use error::KafkaError;
+pub mod topic;
+pub use topic::{Topic, TopicOp};
+
+pub const TAG_BUFFER: u8 = 0x00;
+pub const NULL_VALUE: u8 = 0xff;
 
 #[derive(Debug)]
 pub struct RequestParser {

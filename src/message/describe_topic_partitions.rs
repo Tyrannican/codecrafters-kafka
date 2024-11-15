@@ -1,12 +1,9 @@
 use super::{KafkaMessage, Request};
-use crate::protocol::KafkaError;
+use crate::protocol::{Topic, NULL_VALUE, TAG_BUFFER};
 
 use bytes::{Buf, BufMut};
-use uuid::uuid;
 
 use std::io::Write;
-
-// TODO: Fix error with the slice being smaller than expected
 
 #[derive(Debug)]
 struct DescribeTopicPartitionsRequest {
@@ -62,32 +59,6 @@ pub struct DescribeTopicPartitionsResponse {
     pub topics: Vec<Topic>,
 }
 
-#[derive(Debug)]
-pub struct Partition;
-
-#[derive(Debug)]
-pub struct Topic {
-    pub error: KafkaError,
-    pub id: [u8; 16],
-    pub name: String,
-    pub internal: bool,
-    pub partitions: Vec<Partition>,
-    pub authorized_operations: i32,
-}
-
-impl Topic {
-    pub fn unknown(name: &str) -> Self {
-        Self {
-            error: KafkaError::UnknownTopicOrPartition,
-            name: name.to_owned(),
-            id: uuid!("00000000-0000-0000-0000-000000000000").into_bytes(),
-            internal: false,
-            partitions: vec![],
-            authorized_operations: 0,
-        }
-    }
-}
-
 impl DescribeTopicPartitionsResponse {
     pub fn new(req: &Request) -> Self {
         let dtp_req = DescribeTopicPartitionsRequest::new(req);
@@ -113,28 +84,27 @@ impl KafkaMessage for DescribeTopicPartitionsResponse {
     fn to_bytes(&self) -> Vec<u8> {
         let mut body = Vec::new();
         body.put_i32(self.correlation_id);
-        body.put_i8(0x00);
+        body.put_u8(TAG_BUFFER);
         body.put_i32(self.throttle_time);
-        body.put_i8((self.topics.len() as i8) + 1);
+
+        let topic_arr_len = (self.topics.len() + 1) as i8;
+        body.put_i8(topic_arr_len);
         for topic in self.topics.iter() {
             body.put_i16(topic.error.into());
-            body.put_i8(topic.name.len() as i8);
-            body.write(topic.name.as_bytes())
-                .expect("cannot write topic name as bytes");
-            body.write(&topic.id).expect("cannot write topic id");
-            if topic.internal {
-                body.put_i8(1);
-            } else {
-                body.put_i8(0);
-            }
-
-            body.put_i8((topic.partitions.len() as i8) + 1);
+            let topic_name_len = (topic.name.len() + 1) as i8;
+            body.put_i8(topic_name_len);
+            body.write(&topic.name.as_bytes())
+                .expect("unable to write topic name");
+            body.write(&topic.id).expect("unable to write topic id");
+            let internal = if topic.internal { 1 } else { 0 };
+            body.put_i8(internal);
+            let partition_len = (topic.partitions.len() + 1) as i8;
+            body.put_i8(partition_len);
             body.put_i32(topic.authorized_operations);
-            body.put_i8(0x00);
+            body.put_u8(TAG_BUFFER);
+            body.put_u8(NULL_VALUE);
         }
-
-        body.put_u8(0xff);
-        body.put_i8(0x00);
+        body.put_u8(TAG_BUFFER);
 
         let mut resp = Vec::new();
         resp.put_i32(body.len() as i32);
