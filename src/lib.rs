@@ -1,38 +1,5 @@
-#[repr(u16)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ApiType {
-    ApiVersions = 18,
-}
-
-impl ApiType {
-    pub fn supported_versions(&self) -> (i16, i16) {
-        match self {
-            Self::ApiVersions => (0, 4),
-        }
-    }
-}
-
-impl TryFrom<i16> for ApiType {
-    type Error = std::io::Error;
-
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
-        match value {
-            18 => Ok(Self::ApiVersions),
-            _ => Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("invalid api type: {value}"),
-            )),
-        }
-    }
-}
-
-#[repr(i16)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ErrorCode {
-    Unknown = -1,
-    None = 0,
-    UnsupportedVersion = 35,
-}
+pub mod message;
+pub mod server;
 
 pub fn varint_decode(bytes: &[u8]) -> (u32, usize) {
     let mut result = 0;
