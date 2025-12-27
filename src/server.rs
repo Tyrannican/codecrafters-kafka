@@ -1,48 +1,52 @@
 use super::message::Request;
 use anyhow::{Context, Result};
 use bytes::BytesMut;
-use crossbeam_channel::{Receiver, Sender, unbounded};
-use std::{
-    collections::HashMap,
-    io::{Read, Write},
-    net::{TcpListener, TcpStream},
-    thread::JoinHandle,
+use kanal::{AsyncReceiver, AsyncSender, unbounded_async};
+use std::collections::HashMap;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    task::JoinHandle,
 };
 
 const WORKER_COUNT: usize = 5;
-pub type ServerRequest = (Request, Sender<BytesMut>);
+pub type ServerRequest = (Request, AsyncSender<BytesMut>);
 
 pub struct ConnectionHandler {
     stream: TcpStream,
-    msg_sender: Sender<ServerRequest>,
+    msg_sender: AsyncSender<ServerRequest>,
 }
 
 impl ConnectionHandler {
-    pub fn new(stream: TcpStream, msg_sender: Sender<ServerRequest>) -> Self {
+    pub fn new(stream: TcpStream, msg_sender: AsyncSender<ServerRequest>) -> Self {
         Self { stream, msg_sender }
     }
 
-    pub fn handle_connection(&mut self) -> Result<()> {
+    pub async fn handle_connection(&mut self) -> Result<()> {
         loop {
             let mut buf = BytesMut::from_iter(vec![0; 4096].into_iter());
             let n = self
                 .stream
                 .read(&mut buf)
+                .await
                 .context("reading client request")?;
 
             if n == 0 {
                 break;
             }
 
-            let (tx, rx) = unbounded();
+            buf.truncate(n);
+            let (tx, rx) = unbounded_async();
             let request = Request::parse(buf).context("parsing incoming request")?;
             self.msg_sender
                 .send((request, tx))
+                .await
                 .context("sending request to server")?;
 
-            if let Ok(response) = rx.recv() {
+            if let Ok(response) = rx.recv().await {
                 self.stream
                     .write(&response[..])
+                    .await
                     .context("sending response back to client")?;
             }
         }
@@ -64,30 +68,31 @@ impl Server {
         }
     }
 
-    pub fn start(&mut self, receiver: Receiver<ServerRequest>) {
+    pub fn start(&mut self, receiver: AsyncReceiver<ServerRequest>) {
         for i in 0..self.worker_count {
             let rx = receiver.clone();
             let mut worker = ServerWorker::new(rx);
-            let handle = std::thread::spawn(move || worker.start());
+            let handle = tokio::task::spawn(async move { worker.start().await });
             self.pool.insert(i, handle);
         }
     }
 }
 
 pub struct ServerWorker {
-    receiver: Receiver<ServerRequest>,
+    receiver: AsyncReceiver<ServerRequest>,
 }
 
 impl ServerWorker {
-    pub fn new(rx: Receiver<ServerRequest>) -> Self {
+    pub fn new(rx: AsyncReceiver<ServerRequest>) -> Self {
         Self { receiver: rx }
     }
 
-    pub fn start(&mut self) -> Result<()> {
-        while let Ok((request, responder)) = self.receiver.recv() {
+    pub async fn start(&mut self) -> Result<()> {
+        while let Ok((request, responder)) = self.receiver.recv().await {
             let response = request.response();
             responder
                 .send(response)
+                .await
                 .context("sending response to client")?;
         }
 

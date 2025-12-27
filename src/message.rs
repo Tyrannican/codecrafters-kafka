@@ -5,13 +5,33 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ApiType {
     ApiVersions = 18,
+    DescribeTopicPartitions = 75,
 }
 
 impl ApiType {
     pub fn supported_versions(&self) -> (i16, i16) {
         match self {
             Self::ApiVersions => (0, 4),
+            Self::DescribeTopicPartitions => (0, 0),
         }
+    }
+
+    pub fn metadata(&self) -> BytesMut {
+        let mut buf = BytesMut::new();
+        let (min, max) = self.supported_versions();
+
+        // Api Key
+        buf.put_i16(*self as i16);
+        // Min supported version
+        buf.put_i16(min);
+
+        // Max supported version
+        buf.put_i16(max);
+
+        // Tag buffer
+        buf.put_i8(0x00);
+
+        buf
     }
 }
 
@@ -65,20 +85,25 @@ impl Request {
                 let mut inner = BytesMut::new();
                 let c_id = self.header.correlation_id;
                 let error_code = self.header.version_supported();
-                let (min, max) = api_key.supported_versions();
+                let thottle: i32 = 0;
+
+                let supported_apis = vec![ApiType::ApiVersions, ApiType::DescribeTopicPartitions];
+                let api_items = supported_apis.len() + 1; // TODO: varint encode
 
                 inner.put_i32(c_id);
                 inner.put_i16(error_code as i16);
-                inner.put_i8(2);
-                inner.put_i16(api_key as i16);
-                inner.put_i16(min);
-                inner.put_i16(max);
-                inner.put_i8(0);
-                inner.put_i32(0);
-                inner.put_i8(0);
+                inner.put_i8(api_items as i8);
+                for api in supported_apis.iter() {
+                    inner.extend_from_slice(&api.metadata()[..]);
+                }
+                inner.put_i32(thottle);
+
+                // Tags
+                inner.put_i8(0x00);
 
                 inner
             }
+            _ => BytesMut::new(),
         };
 
         response.put_i32(resp.len() as i32);
