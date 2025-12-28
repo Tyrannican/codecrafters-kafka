@@ -1,6 +1,8 @@
-use super::message::Request;
+use crate::request::{ApiType, ErrorCode, describe_topics::DescribeTopicsRequest};
+
+use super::request::Request;
 use anyhow::{Context, Result};
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use kanal::{AsyncReceiver, AsyncSender, unbounded_async};
 use std::collections::HashMap;
 use tokio::{
@@ -9,7 +11,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-const WORKER_COUNT: usize = 5;
+const WORKER_COUNT: usize = 10;
 pub type ServerRequest = (Request, AsyncSender<BytesMut>);
 
 pub struct ConnectionHandler {
@@ -89,7 +91,71 @@ impl ServerWorker {
 
     pub async fn start(&mut self) -> Result<()> {
         while let Ok((request, responder)) = self.receiver.recv().await {
-            let response = request.response();
+            let mut response = BytesMut::new();
+            let content = match request.header.api_key {
+                ApiType::ApiVersions => {
+                    let mut content = BytesMut::new();
+                    let c_id = request.header.correlation_id;
+                    let error_code = request.header.version_supported();
+                    let thottle: i32 = 0;
+
+                    let supported_apis =
+                        vec![ApiType::ApiVersions, ApiType::DescribeTopicPartitions];
+                    let api_items = supported_apis.len() + 1; // TODO: varint encode
+
+                    content.put_i32(c_id);
+                    content.put_i16(error_code as i16);
+                    content.put_i8(api_items as i8);
+                    for api in supported_apis.iter() {
+                        api.metadata(&mut content);
+                    }
+                    content.put_i32(thottle);
+
+                    // Tags
+                    content.put_i8(0x00);
+
+                    content
+                }
+                ApiType::DescribeTopicPartitions => {
+                    let request =
+                        DescribeTopicsRequest::new(request.header.clone(), request.payload);
+                    let mut content = BytesMut::new();
+                    let throttle: i32 = 0;
+                    let tag: i8 = 0;
+                    content.put_i32(request.header.correlation_id);
+                    content.put_i8(tag);
+
+                    content.put_i32(throttle);
+                    content.put_i8((request.topic_names.len() + 1) as i8);
+
+                    // TODO: Derive a Topic
+                    let topic_id = vec![0; 16];
+                    let is_internal: i8 = 0x00;
+                    let partition_arr_len: i8 = 0x00;
+                    let authorised_ops: i32 = 0;
+                    for topic in request.topic_names.iter() {
+                        // TODO: Get topic and perform checks
+                        let topic_len = (topic.len() + 1) as i8;
+                        content.put_i16(ErrorCode::UnknownTopicOrPartition as i16);
+                        content.put_i8(topic_len);
+                        content.extend_from_slice(&topic[..]);
+                        content.extend_from_slice(&topic_id);
+                        content.put_i8(is_internal);
+                        content.put_i8(partition_arr_len);
+                        content.put_i32(authorised_ops);
+                        content.put_i8(tag);
+                    }
+                    // content.put_i32(request.partition_limit);
+                    content.put_u8(request.cursor);
+                    content.put_i8(tag);
+
+                    content
+                }
+            };
+
+            response.put_i32(content.len() as i32);
+            response.extend_from_slice(&content[..]);
+
             responder
                 .send(response)
                 .await

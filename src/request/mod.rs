@@ -1,3 +1,4 @@
+pub mod describe_topics;
 use anyhow::{Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
@@ -16,8 +17,7 @@ impl ApiType {
         }
     }
 
-    pub fn metadata(&self) -> BytesMut {
-        let mut buf = BytesMut::new();
+    pub fn metadata(&self, buf: &mut BytesMut) {
         let (min, max) = self.supported_versions();
 
         // Api Key
@@ -30,8 +30,6 @@ impl ApiType {
 
         // Tag buffer
         buf.put_i8(0x00);
-
-        buf
     }
 }
 
@@ -41,6 +39,7 @@ impl TryFrom<i16> for ApiType {
     fn try_from(value: i16) -> Result<Self, Self::Error> {
         match value {
             18 => Ok(Self::ApiVersions),
+            75 => Ok(Self::DescribeTopicPartitions),
             _ => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("invalid api type: {value}"),
@@ -54,14 +53,15 @@ impl TryFrom<i16> for ApiType {
 pub enum ErrorCode {
     Unknown = -1,
     None = 0,
+    UnknownTopicOrPartition = 3,
     UnsupportedVersion = 35,
 }
 
 #[derive(Debug)]
 pub struct Request {
-    message_size: i32,
-    header: RequestHeader,
-    payload: Bytes,
+    pub message_size: i32,
+    pub header: RequestHeader,
+    pub payload: Bytes,
 }
 
 impl Request {
@@ -76,50 +76,15 @@ impl Request {
             payload,
         })
     }
-
-    pub fn response(&self) -> BytesMut {
-        let mut response = BytesMut::new();
-        let api_key = self.header.api_key;
-        let resp = match api_key {
-            ApiType::ApiVersions => {
-                let mut inner = BytesMut::new();
-                let c_id = self.header.correlation_id;
-                let error_code = self.header.version_supported();
-                let thottle: i32 = 0;
-
-                let supported_apis = vec![ApiType::ApiVersions, ApiType::DescribeTopicPartitions];
-                let api_items = supported_apis.len() + 1; // TODO: varint encode
-
-                inner.put_i32(c_id);
-                inner.put_i16(error_code as i16);
-                inner.put_i8(api_items as i8);
-                for api in supported_apis.iter() {
-                    inner.extend_from_slice(&api.metadata()[..]);
-                }
-                inner.put_i32(thottle);
-
-                // Tags
-                inner.put_i8(0x00);
-
-                inner
-            }
-            _ => BytesMut::new(),
-        };
-
-        response.put_i32(resp.len() as i32);
-        response.extend_from_slice(&resp[..]);
-
-        response
-    }
 }
 
 #[derive(Debug, Clone)]
-struct RequestHeader {
-    api_key: ApiType,
-    api_version: i16,
-    correlation_id: i32,
-    client_id: String,
-    tag_buffer: i8,
+pub struct RequestHeader {
+    pub api_key: ApiType,
+    pub api_version: i16,
+    pub correlation_id: i32,
+    pub client_id: Bytes,
+    pub tag_buffer: i8,
 }
 
 impl RequestHeader {
@@ -130,15 +95,15 @@ impl RequestHeader {
 
         let id_len = buf.get_i16();
         let client_id = if id_len != -1 {
-            let s = String::from_utf8(buf[..id_len as usize].to_vec())
-                .context("extracting client id")?;
+            let mut c_id = vec![0; id_len as usize];
+            c_id.copy_from_slice(&buf[..id_len as usize]);
+            let c_id = Bytes::from(c_id);
             buf.advance(id_len as usize);
-            s
+            c_id
         } else {
-            String::from("")
+            Bytes::new()
         };
 
-        // TODO: Parse Tag Buffers
         let tag_buffer = buf.get_i8();
         assert_eq!(tag_buffer, 0x00);
 
@@ -159,4 +124,8 @@ impl RequestHeader {
             ErrorCode::UnsupportedVersion
         }
     }
+}
+
+pub trait IntoResponse {
+    fn response(&self) -> BytesMut;
 }

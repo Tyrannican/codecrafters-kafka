@@ -1,14 +1,14 @@
-pub mod message;
+pub mod request;
 pub mod server;
 
-pub fn varint_decode(bytes: &[u8]) -> (u32, usize) {
+pub fn varint_decode(bytes: &[u8]) -> (i32, usize) {
     let mut result = 0;
     let mut shift = 0;
     let mut consumed = 0;
 
     for byte in bytes.iter() {
         consumed += 1;
-        let value = (byte & 0x7F) as u32;
+        let value = (byte & 0x7F) as i32;
         result |= value << shift;
         if byte & 0x80 == 0 {
             return (result, consumed);
@@ -17,7 +17,7 @@ pub fn varint_decode(bytes: &[u8]) -> (u32, usize) {
         shift += 7;
     }
 
-    (result, consumed)
+    todo!()
 }
 
 pub fn varint_encode(mut value: u32) -> Vec<u8> {
