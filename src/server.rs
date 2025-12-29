@@ -1,4 +1,7 @@
-use crate::request::{ApiType, ErrorCode, describe_topics::DescribeTopicsRequest};
+use crate::{
+    metadata::{RecordBatch, parse_metadata},
+    request::{ApiType, ErrorCode, describe_topics::DescribeTopicsRequest},
+};
 
 use super::request::Request;
 use anyhow::{Context, Result};
@@ -59,13 +62,16 @@ impl ConnectionHandler {
 
 pub struct Server {
     worker_count: usize,
+    metadata: Box<[RecordBatch]>,
     pool: HashMap<usize, JoinHandle<Result<(), anyhow::Error>>>,
 }
 
 impl Server {
     pub fn new() -> Self {
+        let metadata = parse_metadata();
         Self {
             worker_count: WORKER_COUNT,
+            metadata,
             pool: HashMap::new(),
         }
     }
@@ -92,6 +98,7 @@ impl ServerWorker {
     pub async fn start(&mut self) -> Result<()> {
         while let Ok((request, responder)) = self.receiver.recv().await {
             let mut response = BytesMut::new();
+            // TODO: Clean this up
             let content = match request.header.api_key {
                 ApiType::ApiVersions => {
                     let mut content = BytesMut::new();

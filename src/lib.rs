@@ -1,39 +1,45 @@
+use bytes::{Buf, Bytes};
+pub mod metadata;
 pub mod request;
 pub mod server;
 
-pub fn varint_decode(bytes: &[u8]) -> (i32, usize) {
-    let mut result = 0;
+#[inline]
+pub fn varint_decode(bytes: &mut Bytes) -> i32 {
+    let mut value = 0;
     let mut shift = 0;
     let mut consumed = 0;
 
     for byte in bytes.iter() {
         consumed += 1;
-        let value = (byte & 0x7F) as i32;
-        result |= value << shift;
-        if byte & 0x80 == 0 {
-            return (result, consumed);
-        }
-
+        value |= ((byte & 0x7F) as u32) << shift;
         shift += 7;
+
+        if byte & 0x80 == 0 {
+            break;
+        }
     }
 
-    todo!()
+    bytes.advance(consumed);
+    ((value >> 1) as i32) ^ -((value & 1) as i32)
 }
 
-pub fn varint_encode(mut value: u32) -> Vec<u8> {
-    let mut output = Vec::new();
+#[inline]
+pub fn unsigned_varint_decode(bytes: &mut Bytes) -> u32 {
+    let mut value = 0;
+    let mut shift = 0;
+    let mut consumed = 0;
 
-    loop {
-        let mut byte = (value & 0x7F) as u8;
-        value >>= 7;
+    for byte in bytes.iter() {
+        consumed += 1;
+        value |= ((byte & 0x7F) as u32) << shift;
+        shift += 7;
 
-        if value != 0 {
-            byte |= 0x80;
-        }
-
-        output.push(byte);
-        if value == 0 {
-            return output;
+        if byte & 0x80 == 0 {
+            break;
         }
     }
+
+    bytes.advance(consumed);
+
+    value.saturating_sub(1)
 }
