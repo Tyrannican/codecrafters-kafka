@@ -2,6 +2,7 @@
 
 use crate::{unsigned_varint_decode, varint_decode};
 use bytes::{Buf, Bytes};
+use uuid::Uuid;
 
 const METADATA_FILE: &str =
     "/tmp/kraft-combined-logs/__cluster_metadata-0/00000000000000000000.log";
@@ -147,7 +148,7 @@ impl FeatureRecord {
 pub struct TopicRecord {
     version: i8,
     topic_name: Bytes,
-    uuid: Bytes,
+    uuid: Uuid,
     tags: i8,
 }
 
@@ -162,8 +163,7 @@ impl TopicRecord {
             buf.advance(name_len as usize);
             name
         };
-        let uuid = Bytes::copy_from_slice(&buf[..16]);
-        buf.advance(16);
+        let uuid = Uuid::from_u128(buf.get_u128());
         let tags = buf.get_i8();
 
         Self {
@@ -179,7 +179,7 @@ impl TopicRecord {
 pub struct PartitionRecord {
     version: i8,
     partition_id: i32,
-    uuid: Bytes,
+    uuid: Uuid,
     replication_ids: Box<[i32]>,
     in_sync_replica_ids: Box<[i32]>,
     removing_replica_ids: Box<[i32]>,
@@ -187,7 +187,7 @@ pub struct PartitionRecord {
     leader: i32,
     leader_epoch: i32,
     partition_epoch: i32,
-    directories: Box<[Bytes]>,
+    directories: Box<[Uuid]>,
     tags: i8,
 }
 
@@ -195,9 +195,7 @@ impl PartitionRecord {
     pub fn new(mut buf: Bytes) -> Self {
         let version = buf.get_i8();
         let partition_id = buf.get_i32();
-        let uuid = Bytes::copy_from_slice(&buf[..16]);
-        buf.advance(16);
-
+        let uuid = Uuid::from_u128(buf.get_u128());
         let repl_arr_len = unsigned_varint_decode(&mut buf);
         let repl_id_arr: Vec<i32> = (0..repl_arr_len).map(|_| buf.get_i32()).collect();
         let in_sync_arr_len = unsigned_varint_decode(&mut buf);
@@ -210,12 +208,8 @@ impl PartitionRecord {
         let leader_epoch = buf.get_i32();
         let partition_epoch = buf.get_i32();
         let dir_len = unsigned_varint_decode(&mut buf);
-        let dirs: Vec<Bytes> = (0..dir_len)
-            .map(|_| {
-                let dir = Bytes::copy_from_slice(&buf[..16]);
-                buf.advance(16);
-                dir
-            })
+        let dirs: Vec<Uuid> = (0..dir_len)
+            .map(|_| Uuid::from_u128(buf.get_u128()))
             .collect();
 
         let tags = buf.get_i8();

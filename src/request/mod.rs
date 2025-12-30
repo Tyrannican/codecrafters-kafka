@@ -1,6 +1,12 @@
+pub mod api_versions;
 pub mod describe_topics;
+
 use anyhow::{Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+
+pub trait IntoResponse {
+    fn response(&self) -> BytesMut;
+}
 
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -124,8 +130,4 @@ impl RequestHeader {
             ErrorCode::UnsupportedVersion
         }
     }
-}
-
-pub trait IntoResponse {
-    fn response(&self) -> BytesMut;
 }

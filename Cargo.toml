@@ -12,3 +12,4 @@ futures-util = { version = "0.3.31", features = ["sink"] }
 kanal = "0.1.1"
 thiserror = "1.0.38"                             # error handling
 tokio = { version = "1.48.0", features = ["full"] }
+uuid = "1.19.0"
