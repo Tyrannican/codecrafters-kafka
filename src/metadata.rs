@@ -4,13 +4,63 @@ use crate::{unsigned_varint_decode, varint_decode};
 use bytes::{Buf, Bytes};
 use uuid::Uuid;
 
+use std::collections::HashMap;
+
 const METADATA_FILE: &str =
     "/tmp/kraft-combined-logs/__cluster_metadata-0/00000000000000000000.log";
+
+pub fn parse_metadata() -> Box<[RecordBatch]> {
+    let mut content = match std::fs::read(METADATA_FILE) {
+        Ok(content) => Bytes::from(content),
+        Err(_) => return Vec::new().into_boxed_slice(),
+    };
+
+    let mut batches = Vec::new();
+    while content.has_remaining() {
+        let _ = content.get_i64();
+        let batch_len = content.get_i32();
+        let mut batch = Bytes::copy_from_slice(&content[..batch_len as usize]);
+        let batch_header = RecordBatchHeader::new(&mut batch);
+        let total_records = batch.get_i32();
+
+        let mut topics = HashMap::new();
+        let mut current_topic_id = None;
+        for _ in (0..total_records).into_iter() {
+            let record = Record::new(&mut batch);
+            match record.record_type {
+                RecordType::Feature(_) => {} // TODO: Deal with this if required
+                RecordType::Topic(topic) => {
+                    if current_topic_id.is_none() {
+                        current_topic_id = Some(topic.uuid);
+                    }
+                }
+                RecordType::Partition(partition) => {
+                    if let Some(uuid) = current_topic_id
+                        && partition.uuid == uuid
+                    {
+                        let entry = topics.entry(uuid).or_insert_with(|| Vec::new());
+                        entry.push(partition);
+                    }
+                }
+            }
+        }
+
+        batches.push(RecordBatch {
+            header: batch_header,
+            topics,
+        });
+
+        content.advance(batch_len as usize);
+    }
+    eprintln!("{batches:?}");
+
+    batches.into_boxed_slice()
+}
 
 #[derive(Debug)]
 pub struct RecordBatch {
     header: RecordBatchHeader,
-    records: Box<[Record]>,
+    topics: HashMap<Uuid, Vec<PartitionRecord>>,
 }
 
 #[derive(Debug)]
@@ -229,33 +279,4 @@ impl PartitionRecord {
             tags,
         }
     }
-}
-
-pub fn parse_metadata() -> Box<[RecordBatch]> {
-    let mut content = match std::fs::read(METADATA_FILE) {
-        Ok(content) => Bytes::from(content),
-        Err(_) => return Vec::new().into_boxed_slice(),
-    };
-
-    let mut batches = Vec::new();
-    while content.has_remaining() {
-        // Batch offset
-        let _ = content.get_i64();
-
-        let batch_len = content.get_i32();
-        let mut batch = Bytes::copy_from_slice(&content[..batch_len as usize]);
-        let batch_header = RecordBatchHeader::new(&mut batch);
-        let total_records = batch.get_i32();
-        let records: Vec<Record> = (0..total_records)
-            .map(|_| Record::new(&mut batch))
-            .collect();
-
-        batches.push(RecordBatch {
-            header: batch_header,
-            records: records.into_boxed_slice(),
-        });
-        content.advance(batch_len as usize);
-    }
-
-    batches.into_boxed_slice()
 }

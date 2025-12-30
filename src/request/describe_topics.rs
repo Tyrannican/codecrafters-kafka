@@ -1,9 +1,12 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use crate::{
+    metadata::RecordBatch,
     request::{ErrorCode, IntoResponse, Request, RequestHeader},
     varint_decode,
 };
+
+use std::sync::Arc;
 
 pub struct DescribeTopicsRequest {
     pub header: RequestHeader,
@@ -11,10 +14,11 @@ pub struct DescribeTopicsRequest {
     pub partition_limit: i32,
     pub cursor: u8,
     pub tags: i8,
+    metadata: Arc<Box<[RecordBatch]>>,
 }
 
 impl DescribeTopicsRequest {
-    pub fn new(request: Request) -> Self {
+    pub fn new(request: Request, metadata: Arc<Box<[RecordBatch]>>) -> Self {
         let Request {
             header,
             mut payload,
@@ -42,6 +46,7 @@ impl DescribeTopicsRequest {
             partition_limit,
             cursor,
             tags,
+            metadata,
         }
     }
 }

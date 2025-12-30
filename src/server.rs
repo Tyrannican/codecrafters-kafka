@@ -107,7 +107,9 @@ impl ServerWorker {
         while let Ok((request, responder)) = self.receiver.recv().await {
             let request: &dyn IntoResponse = match request.header.api_key {
                 ApiType::ApiVersions => &ApiVersionsRequest::new(request),
-                ApiType::DescribeTopicPartitions => &DescribeTopicsRequest::new(request),
+                ApiType::DescribeTopicPartitions => {
+                    &DescribeTopicsRequest::new(request, Arc::clone(&self.metadata))
+                }
             };
 
             let mut response = BytesMut::new();
