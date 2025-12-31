@@ -26,7 +26,6 @@ impl DescribeTopicsRequest {
         } = request;
 
         let len = unsigned_varint_decode(&mut payload);
-        eprintln!("Topic length: {len}");
         let mut topic_names = Vec::with_capacity(len as usize);
         for _ in 0..len {
             let topic_len = unsigned_varint_decode(&mut payload);
