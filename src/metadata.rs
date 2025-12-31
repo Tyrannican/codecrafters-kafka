@@ -24,6 +24,7 @@ pub fn parse_metadata() -> Box<[RecordBatch]> {
         let total_records = batch.get_i32();
 
         let mut topics = HashMap::new();
+        let mut partitions = HashMap::new();
         let mut current_topic_id = None;
         for _ in (0..total_records).into_iter() {
             let record = Record::new(&mut batch);
@@ -33,12 +34,14 @@ pub fn parse_metadata() -> Box<[RecordBatch]> {
                     if current_topic_id.is_none() {
                         current_topic_id = Some(topic.uuid);
                     }
+
+                    topics.insert(topic.topic_name, topic.uuid);
                 }
                 RecordType::Partition(partition) => {
                     if let Some(uuid) = current_topic_id
                         && partition.uuid == uuid
                     {
-                        let entry = topics.entry(uuid).or_insert_with(|| Vec::new());
+                        let entry = partitions.entry(uuid).or_insert_with(|| Vec::new());
                         entry.push(partition);
                     }
                 }
@@ -48,11 +51,11 @@ pub fn parse_metadata() -> Box<[RecordBatch]> {
         batches.push(RecordBatch {
             header: batch_header,
             topics,
+            partitions,
         });
 
         content.advance(batch_len as usize);
     }
-    eprintln!("{batches:?}");
 
     batches.into_boxed_slice()
 }
@@ -60,7 +63,24 @@ pub fn parse_metadata() -> Box<[RecordBatch]> {
 #[derive(Debug)]
 pub struct RecordBatch {
     header: RecordBatchHeader,
-    topics: HashMap<Uuid, Vec<PartitionRecord>>,
+    topics: HashMap<Bytes, Uuid>,
+    partitions: HashMap<Uuid, Vec<PartitionRecord>>,
+}
+
+impl RecordBatch {
+    pub fn get_topic_partitions(&self, topic_name: &Bytes) -> Option<&[PartitionRecord]> {
+        match self.topics.get(topic_name) {
+            Some(uuid) => match self.partitions.get(uuid) {
+                Some(part) => Some(part),
+                None => None,
+            },
+            None => None,
+        }
+    }
+
+    pub fn get_topic_uuid(&self, topic_name: &Bytes) -> Option<Uuid> {
+        self.topics.get(topic_name).copied()
+    }
 }
 
 #[derive(Debug)]
@@ -227,18 +247,18 @@ impl TopicRecord {
 
 #[derive(Debug)]
 pub struct PartitionRecord {
-    version: i8,
-    partition_id: i32,
-    uuid: Uuid,
-    replication_ids: Box<[i32]>,
-    in_sync_replica_ids: Box<[i32]>,
-    removing_replica_ids: Box<[i32]>,
-    adding_replica_ids: Box<[i32]>,
-    leader: i32,
-    leader_epoch: i32,
-    partition_epoch: i32,
-    directories: Box<[Uuid]>,
-    tags: i8,
+    pub version: i8,
+    pub partition_id: i32,
+    pub uuid: Uuid,
+    pub replication_ids: Box<[i32]>,
+    pub in_sync_replica_ids: Box<[i32]>,
+    pub removing_replica_ids: Box<[i32]>,
+    pub adding_replica_ids: Box<[i32]>,
+    pub leader: i32,
+    pub leader_epoch: i32,
+    pub partition_epoch: i32,
+    pub directories: Box<[Uuid]>,
+    pub tags: i8,
 }
 
 impl PartitionRecord {
