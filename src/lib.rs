@@ -1,4 +1,4 @@
-use bytes::{Buf, Bytes};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 pub mod metadata;
 pub mod request;
 pub mod server;
@@ -42,4 +42,15 @@ pub fn unsigned_varint_decode(bytes: &mut Bytes) -> u32 {
     bytes.advance(consumed);
 
     value.saturating_sub(1)
+}
+
+#[inline]
+pub fn unsigned_varint_encode(buf: &mut BytesMut, mut length: usize) {
+    length += 1;
+    while length >= 0x80 {
+        buf.put_u8((length & 0x7F) as u8 | 0x80);
+        length >>= 7;
+    }
+
+    buf.put_u8(length as u8);
 }

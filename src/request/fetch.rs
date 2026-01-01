@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     metadata::RecordBatch,
     request::{ErrorCode, IntoResponse, Request, RequestHeader},
-    unsigned_varint_decode,
+    unsigned_varint_decode, unsigned_varint_encode,
 };
 
 #[derive(Debug)]
@@ -82,8 +82,7 @@ impl FetchRequest {
         }
     }
 
-    pub fn no_topic_response(&self) -> BytesMut {
-        let mut content = BytesMut::new();
+    pub fn no_topic_response(&self, content: &mut BytesMut) {
         let throttle_time = 0;
         let error_code = ErrorCode::None as i16;
         let responses_len = 1;
@@ -95,8 +94,28 @@ impl FetchRequest {
         content.put_i32(self.session_id);
         content.put_i8(responses_len);
         content.put_i8(0x00);
+    }
 
-        content
+    pub fn unknown_topics_response(&self, content: &mut BytesMut) {
+        // Partitions Array length
+        unsigned_varint_encode(content, 1);
+        content.put_i32(0);
+        content.put_i16(ErrorCode::UnknownTopicId as i16);
+
+        // High Watermark
+        content.put_i64(0);
+        // Last Stable Offset
+        content.put_i64(0);
+        // Log start offset
+        content.put_i64(0);
+        // Aborted Txns length
+        unsigned_varint_encode(content, 0);
+        // Prefered Read Replica
+        content.put_i32(0);
+        // Records length
+        unsigned_varint_encode(content, 0);
+
+        content.put_i8(0x00);
     }
 }
 
@@ -112,9 +131,10 @@ pub struct PartitionRequest {
 
 impl IntoResponse for FetchRequest {
     fn response(&self) -> BytesMut {
-        eprintln!("{:?}", self.topics);
+        let mut content = BytesMut::new();
         if self.topics.is_empty() {
-            return self.no_topic_response();
+            self.no_topic_response(&mut content);
+            return content;
         }
 
         let mut content = BytesMut::new();
@@ -127,37 +147,58 @@ impl IntoResponse for FetchRequest {
         content.put_i16(error_code);
         content.put_i32(self.session_id);
 
-        content.put_i8(self.topics.len() as i8 + 1);
+        // Responses Length
+        unsigned_varint_encode(&mut content, self.topics.len());
 
         for topic in self.topics.iter() {
-            let (uuid, _req_partition) = topic;
+            let (uuid, req_partition) = topic;
             content.put_u128(uuid.as_u128());
 
             let contains_topic = self.metadata.iter().any(|record| record.has_topic(&uuid));
             if !contains_topic {
+                self.unknown_topics_response(&mut content);
+            } else {
                 // Partitions Array length
-                content.put_i8(2);
-                content.put_i32(0);
-                content.put_i16(ErrorCode::UnknownTopicId as i16);
+                unsigned_varint_encode(&mut content, req_partition.len());
+                for partition in req_partition.iter() {
+                    let id = partition.partition_id;
+                    content.put_i32(id);
+                    content.put_i16(ErrorCode::None as i16);
 
-                // High Watermark
-                content.put_i64(0);
-                // Last Stable Offset
-                content.put_i64(0);
-                // Log start offset
-                content.put_i64(0);
-                // Aborted Txns length
-                content.put_i8(1);
-                // Prefered Read Replica
-                content.put_i32(0);
-                // Records length
-                content.put_i8(1);
+                    // High Watermark
+                    content.put_i64(0);
+                    // Last Stable Offset
+                    content.put_i64(0);
+                    // Log start offset
+                    content.put_i64(0);
+                    // Aborted Txns length
+                    unsigned_varint_encode(&mut content, 0);
+                    // Prefered Read Replica
+                    content.put_i32(0);
 
-                content.put_i8(0x00);
+                    let log_records = self
+                        .metadata
+                        .iter()
+                        .filter_map(|record| record.read_log_file(uuid, id))
+                        .fold(BytesMut::new(), |mut acc, log_file| {
+                            acc.put(log_file);
+                            acc
+                        })
+                        .freeze();
+
+                    // Compact Records
+                    unsigned_varint_encode(&mut content, log_records.len());
+                    content.put(log_records);
+
+                    content.put_i8(0x00);
+                }
             }
+
+            // Final tags to add
             content.put_i8(0x00);
         }
 
+        // Tags again
         content.put_i8(0x00);
 
         content

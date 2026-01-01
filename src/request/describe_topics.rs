@@ -59,7 +59,7 @@ impl DescribeTopicsRequest {
         let topic_len = (topic_name.len() + 1) as u8;
 
         for record in self.metadata.iter() {
-            if let Some(partitions) = record.get_topic_partitions(topic_name) {
+            if let Some(partitions) = record.get_topic_partitions_from_name(topic_name) {
                 let uuid = record
                     .get_topic_uuid(topic_name)
                     .expect("this is guaranteed to be here");

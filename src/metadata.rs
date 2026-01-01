@@ -68,12 +68,19 @@ pub struct RecordBatch {
 }
 
 impl RecordBatch {
-    pub fn get_topic_partitions(&self, topic_name: &Bytes) -> Option<&[PartitionRecord]> {
+    pub fn get_topic_partitions_from_name(&self, topic_name: &Bytes) -> Option<&[PartitionRecord]> {
         match self.topics.get(topic_name) {
             Some(uuid) => match self.partitions.get(uuid) {
                 Some(part) => Some(part),
                 None => None,
             },
+            None => None,
+        }
+    }
+
+    pub fn get_topic_partitions_from_uuid(&self, uuid: &Uuid) -> Option<&[PartitionRecord]> {
+        match self.partitions.get(uuid) {
+            Some(part) => Some(part),
             None => None,
         }
     }
@@ -84,6 +91,43 @@ impl RecordBatch {
 
     pub fn has_topic(&self, uuid: &Uuid) -> bool {
         self.partitions.contains_key(uuid)
+    }
+
+    pub fn read_log_file(&self, uuid: &Uuid, partition_id: i32) -> Option<Bytes> {
+        let topic_names = self
+            .topics
+            .iter()
+            .filter_map(|(name, id)| if id == uuid { Some(name.clone()) } else { None })
+            .collect::<Vec<Bytes>>();
+
+        if let Some(name) = topic_names.first() {
+            let name = String::from_utf8(name.to_vec()).expect("valid utf-8 guaranteed");
+            if let Some(partitions) = self.partitions.get(uuid) {
+                let partition: Vec<&PartitionRecord> = partitions
+                    .iter()
+                    .filter(|p| p.partition_id == partition_id)
+                    .collect();
+
+                match partition.first() {
+                    Some(_) => {
+                        let path = format!(
+                            "/tmp/kraft-combined-logs/{}-{}/00000000000000000000.log",
+                            name, partition_id
+                        );
+
+                        let content = std::fs::read(path).expect("should exist");
+                        if content.is_empty() {
+                            return None;
+                        } else {
+                            return Some(content.into());
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -302,5 +346,13 @@ impl PartitionRecord {
             directories: dirs.into_boxed_slice(),
             tags,
         }
+    }
+
+    pub fn read_record(&self) -> Bytes {
+        let paths = std::fs::read_dir("/tmp/kraft-combined-logs").unwrap();
+        for path in paths {
+            eprintln!("{:?}", path.unwrap().path().display());
+        }
+        Bytes::new()
     }
 }
