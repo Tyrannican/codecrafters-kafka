@@ -2,7 +2,7 @@ use crate::{
     metadata::{RecordBatch, parse_metadata},
     request::{
         ApiType, IntoResponse, api_versions::ApiVersionsRequest,
-        describe_topics::DescribeTopicsRequest,
+        describe_topics::DescribeTopicsRequest, fetch::FetchRequest,
     },
 };
 
@@ -110,7 +110,7 @@ impl ServerWorker {
                 ApiType::DescribeTopicPartitions => {
                     &DescribeTopicsRequest::new(request, Arc::clone(&self.metadata))
                 }
-                ApiType::Fetch => unimplemented!("not ready yet"),
+                ApiType::Fetch => &FetchRequest::new(request, Arc::clone(&self.metadata)),
             };
 
             let mut response = BytesMut::new();
