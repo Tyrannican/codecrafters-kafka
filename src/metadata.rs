@@ -81,6 +81,10 @@ impl RecordBatch {
     pub fn get_topic_uuid(&self, topic_name: &Bytes) -> Option<Uuid> {
         self.topics.get(topic_name).copied()
     }
+
+    pub fn has_topic(&self, uuid: &Uuid) -> bool {
+        self.partitions.contains_key(uuid)
+    }
 }
 
 #[derive(Debug)]

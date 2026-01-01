@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -20,7 +21,7 @@ pub struct FetchRequest {
     session_id: i32,
     session_epoch: i32,
     topics: Box<[(Uuid, Box<[PartitionRequest]>)]>,
-    forgotten_topics: Vec<(Uuid, i32)>,
+    forgotten_topics: Box<[(Uuid, i32)]>,
     rack_id: Bytes,
 }
 
@@ -76,38 +77,88 @@ impl FetchRequest {
             session_id,
             session_epoch,
             topics: topics.into_boxed_slice(),
-            forgotten_topics,
+            forgotten_topics: forgotten_topics.into_boxed_slice(),
             rack_id,
         }
+    }
+
+    pub fn no_topic_response(&self) -> BytesMut {
+        let mut content = BytesMut::new();
+        let throttle_time = 0;
+        let error_code = ErrorCode::None as i16;
+        let responses_len = 1;
+
+        content.put_i32(self.header.correlation_id);
+        content.put_i8(0x00);
+        content.put_i32(throttle_time);
+        content.put_i16(error_code);
+        content.put_i32(self.session_id);
+        content.put_i8(responses_len);
+        content.put_i8(0x00);
+
+        content
     }
 }
 
 #[derive(Debug)]
 pub struct PartitionRequest {
-    partition_id: i32,
-    current_leader_epoch: i32,
-    fetch_offset: i64,
-    last_fetched_epoch: i32,
-    log_start_offset: i64,
-    partition_max_bytes: i32,
+    pub partition_id: i32,
+    pub current_leader_epoch: i32,
+    pub fetch_offset: i64,
+    pub last_fetched_epoch: i32,
+    pub log_start_offset: i64,
+    pub partition_max_bytes: i32,
 }
 
 impl IntoResponse for FetchRequest {
     fn response(&self) -> BytesMut {
-        let mut content = BytesMut::new();
+        eprintln!("{:?}", self.topics);
         if self.topics.is_empty() {
-            let throttle_time = 0;
-            let error_code = ErrorCode::None as i16;
-            let responses_len = 1;
+            return self.no_topic_response();
+        }
 
-            content.put_i32(self.header.correlation_id);
-            content.put_i8(0x00);
-            content.put_i32(throttle_time);
-            content.put_i16(error_code);
-            content.put_i32(self.session_id);
-            content.put_i8(responses_len);
+        let mut content = BytesMut::new();
+        let throttle_time = 0;
+        let error_code = ErrorCode::None as i16;
+
+        content.put_i32(self.header.correlation_id);
+        content.put_i8(0x00);
+        content.put_i32(throttle_time);
+        content.put_i16(error_code);
+        content.put_i32(self.session_id);
+
+        content.put_i8(self.topics.len() as i8 + 1);
+
+        for topic in self.topics.iter() {
+            let (uuid, _req_partition) = topic;
+            content.put_u128(uuid.as_u128());
+
+            let contains_topic = self.metadata.iter().any(|record| record.has_topic(&uuid));
+            if !contains_topic {
+                // Partitions Array length
+                content.put_i8(2);
+                content.put_i32(0);
+                content.put_i16(ErrorCode::UnknownTopicId as i16);
+
+                // High Watermark
+                content.put_i64(0);
+                // Last Stable Offset
+                content.put_i64(0);
+                // Log start offset
+                content.put_i64(0);
+                // Aborted Txns length
+                content.put_i8(1);
+                // Prefered Read Replica
+                content.put_i32(0);
+                // Records length
+                content.put_i8(1);
+
+                content.put_i8(0x00);
+            }
             content.put_i8(0x00);
         }
+
+        content.put_i8(0x00);
 
         content
     }
