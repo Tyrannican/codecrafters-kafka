@@ -110,6 +110,7 @@ impl ServerWorker {
                 ApiType::DescribeTopicPartitions => {
                     &DescribeTopicsRequest::new(request, Arc::clone(&self.metadata))
                 }
+                ApiType::Fetch => unimplemented!("not ready yet"),
             };
 
             let mut response = BytesMut::new();

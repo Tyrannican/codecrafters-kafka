@@ -21,7 +21,12 @@ impl IntoResponse for ApiVersionsRequest {
         let error_code = self.header.version_supported();
         let thottle: i32 = 0;
 
-        let supported_apis = vec![ApiType::ApiVersions, ApiType::DescribeTopicPartitions];
+        let supported_apis = vec![
+            ApiType::ApiVersions,
+            ApiType::DescribeTopicPartitions,
+            ApiType::Fetch,
+        ];
+
         let api_items = supported_apis.len() + 1; // TODO: varint encode
 
         content.put_i32(c_id);

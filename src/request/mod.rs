@@ -11,6 +11,7 @@ pub trait IntoResponse {
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ApiType {
+    Fetch = 1,
     ApiVersions = 18,
     DescribeTopicPartitions = 75,
 }
@@ -18,6 +19,7 @@ pub enum ApiType {
 impl ApiType {
     pub fn supported_versions(&self) -> (i16, i16) {
         match self {
+            Self::Fetch => (0, 16),
             Self::ApiVersions => (0, 4),
             Self::DescribeTopicPartitions => (0, 0),
         }
@@ -44,6 +46,7 @@ impl TryFrom<i16> for ApiType {
 
     fn try_from(value: i16) -> Result<Self, Self::Error> {
         match value {
+            1 => Ok(Self::Fetch),
             18 => Ok(Self::ApiVersions),
             75 => Ok(Self::DescribeTopicPartitions),
             _ => Err(std::io::Error::new(
