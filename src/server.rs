@@ -111,6 +111,7 @@ impl ServerWorker {
                     &DescribeTopicsRequest::new(request, Arc::clone(&self.metadata))
                 }
                 ApiType::Fetch => &FetchRequest::new(request, Arc::clone(&self.metadata)),
+                ApiType::Produce => todo!(),
             };
 
             let mut response = BytesMut::new();

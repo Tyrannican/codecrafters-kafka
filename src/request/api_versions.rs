@@ -25,6 +25,7 @@ impl IntoResponse for ApiVersionsRequest {
             ApiType::ApiVersions,
             ApiType::DescribeTopicPartitions,
             ApiType::Fetch,
+            ApiType::Produce,
         ];
 
         let api_items = supported_apis.len() + 1; // TODO: varint encode
