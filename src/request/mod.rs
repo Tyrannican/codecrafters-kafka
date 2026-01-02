@@ -1,6 +1,7 @@
 pub mod api_versions;
 pub mod describe_topics;
 pub mod fetch;
+pub mod produce;
 
 use anyhow::{Context, Result};
 use bytes::{Buf, BufMut, Bytes, BytesMut};

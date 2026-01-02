@@ -93,6 +93,14 @@ impl RecordBatch {
         self.partitions.contains_key(uuid)
     }
 
+    pub fn valid_partition(&self, uuid: &Uuid, index: i32) -> bool {
+        if let Some(partitions) = self.partitions.get(uuid) {
+            return partitions.iter().any(|p| p.partition_id == index);
+        }
+
+        false
+    }
+
     pub fn read_log_file(&self, uuid: &Uuid, partition_id: i32) -> Option<Bytes> {
         let topic_names = self
             .topics

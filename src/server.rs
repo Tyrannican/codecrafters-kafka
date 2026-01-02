@@ -2,7 +2,7 @@ use crate::{
     metadata::{RecordBatch, parse_metadata},
     request::{
         ApiType, IntoResponse, api_versions::ApiVersionsRequest,
-        describe_topics::DescribeTopicsRequest, fetch::FetchRequest,
+        describe_topics::DescribeTopicsRequest, fetch::FetchRequest, produce::ProduceRequest,
     },
 };
 
@@ -111,7 +111,7 @@ impl ServerWorker {
                     &DescribeTopicsRequest::new(request, Arc::clone(&self.metadata))
                 }
                 ApiType::Fetch => &FetchRequest::new(request, Arc::clone(&self.metadata)),
-                ApiType::Produce => todo!(),
+                ApiType::Produce => &ProduceRequest::new(request, Arc::clone(&self.metadata)),
             };
 
             let mut response = BytesMut::new();
