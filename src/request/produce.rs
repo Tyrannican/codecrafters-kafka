@@ -54,9 +54,15 @@ impl ProduceRequest {
                     })
                     .collect();
 
+                // Skip tag buffer
+                payload.get_i8();
+
                 (topic_name, partitions.into_boxed_slice())
             })
             .collect();
+
+        // Skip tag buffer
+        payload.get_i8();
 
         Self {
             header: req.header,
