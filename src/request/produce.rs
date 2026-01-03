@@ -44,6 +44,8 @@ impl ProduceRequest {
                         let records_len = unsigned_varint_decode(&mut payload);
                         let records = Bytes::copy_from_slice(&payload[..records_len as usize]);
                         payload.advance(records_len as usize);
+                        // Skip TAG buffer
+                        payload.get_i8();
 
                         Partition {
                             index,
