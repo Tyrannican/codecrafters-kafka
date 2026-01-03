@@ -86,7 +86,7 @@ impl ProduceRequest {
     fn write_record_batch(&self, topic_name: &Bytes, partition: &Partition) {
         let root = PathBuf::from(LOG_DIR);
         let name = String::from_utf8(topic_name.to_vec()).expect("guaranteed to be utf-8");
-        let dir = root.join(format!("{name}/{}", partition.index));
+        let dir = root.join(format!("{name}-{}", partition.index));
         if !dir.exists() {
             std::fs::create_dir_all(&dir).expect("directory creation");
         }
