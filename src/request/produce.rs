@@ -7,7 +7,7 @@ use crate::{
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 const LOG_DIR: &str = "/tmp/kraft-combined-logs";
 
@@ -84,12 +84,14 @@ impl ProduceRequest {
     }
 
     fn write_record_batch(&self, topic_name: &Bytes, partition: &Partition) {
+        let root = PathBuf::from(LOG_DIR);
         let name = String::from_utf8(topic_name.to_vec()).expect("guaranteed to be utf-8");
-        let path = format!(
-            "{LOG_DIR}/{name}/{}/00000000000000000000.log",
-            partition.index
-        );
+        let dir = root.join(format!("{name}/{}", partition.index));
+        if !dir.exists() {
+            std::fs::create_dir_all(&dir).expect("directory creation");
+        }
 
+        let path = dir.join("00000000000000000000.log");
         std::fs::write(path, partition.record_batches.clone()).expect("should be valid");
     }
 }
