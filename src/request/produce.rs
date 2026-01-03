@@ -9,6 +9,8 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 use std::sync::Arc;
 
+const LOG_DIR: &str = "/tmp/kraft-combined-logs";
+
 #[derive(Debug)]
 pub struct ProduceRequest {
     header: RequestHeader,
@@ -80,6 +82,16 @@ impl ProduceRequest {
         // // Tags
         content.put_i8(0x00);
     }
+
+    fn write_record_batch(&self, topic_name: &Bytes, partition: &Partition) {
+        let name = String::from_utf8(topic_name.to_vec()).expect("guaranteed to be utf-8");
+        let path = format!(
+            "{LOG_DIR}/{name}/{}/00000000000000000000.log",
+            partition.index
+        );
+
+        std::fs::write(path, partition.record_batches.clone()).expect("should be valid");
+    }
 }
 
 #[derive(Debug)]
@@ -102,16 +114,40 @@ impl IntoResponse for ProduceRequest {
             content.put(topic_name.clone());
             unsigned_varint_encode(&mut content, partitions.len());
             for partition in partitions.iter() {
-                self.metadata
+                let matches: Vec<&RecordBatch> = self
+                    .metadata
                     .iter()
-                    .for_each(|record| match record.get_topic_uuid(topic_name) {
+                    .filter_map(|record| match record.get_topic_uuid(topic_name) {
                         Some(uuid) => {
-                            if !record.valid_partition(&uuid, partition.index) {
-                                self.invalid_topic(&mut content, partition.index);
+                            if record.valid_partition(&uuid, partition.index) {
+                                Some(record)
+                            } else {
+                                None
                             }
                         }
-                        None => self.invalid_topic(&mut content, partition.index),
-                    });
+                        None => None,
+                    })
+                    .collect();
+
+                if matches.is_empty() {
+                    self.invalid_topic(&mut content, partition.index);
+                } else {
+                    self.write_record_batch(topic_name, partition);
+                    content.put_i32(partition.index);
+                    content.put_i16(ErrorCode::None as i16);
+                    // // Base offset
+                    content.put_i64(0);
+                    // // Log append time
+                    content.put_i64(-1);
+                    // // Log start offset
+                    content.put_i64(0);
+                    // // Record errors array
+                    unsigned_varint_encode(&mut content, 0);
+                    // // Error Message
+                    content.put_i8(0x00);
+                    // // Tags
+                    content.put_i8(0x00);
+                }
             }
 
             content.put_i8(0x00);
